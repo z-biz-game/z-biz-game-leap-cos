@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101418">
+<meta name="description" content="跳蛙渡：两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。">
+<!-- Inline SVG data URI: no /favicon.ico request, so a 404 cannot pollute the console asserts
+     in tools/playtest.mjs, and no binary asset is added to the repo. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230f2a1e'/%3E%3Cellipse%20cx='16'%20cy='24'%20rx='11'%20ry='4'%20fill='%232f6b45'/%3E%3Ccircle%20cx='11'%20cy='15'%20r='5'%20fill='%2363c76a'/%3E%3Ccircle%20cx='21'%20cy='15'%20r='5'%20fill='%23e0a54a'/%3E%3Ccircle%20cx='9.6'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3Ccircle%20cx='22.4'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3C/svg%3E">
+<title>跳蛙渡 · LEAP</title>
+<link rel="stylesheet" href="css/game.css">
+</head>
+<body>
+<header class="topbar">
+  <h1 class="brand"><span class="brand-mark">◍</span>跳蛙渡<small>LEAP</small></h1>
+  <nav class="modes" id="modes" aria-label="模式">
+    <button type="button" data-mode="campaign">河段</button>
+    <button type="button" data-mode="daily">每日</button>
+    <button type="button" data-mode="random">随机</button>
+  </nav>
+  <p class="totals" id="totals"></p>
+</header>
+
+<main class="stage">
+  <section class="board">
+    <canvas id="river" aria-label="一条河，两岸的青蛙要互换位置"></canvas>
+    <p class="hint-line" id="hintline"></p>
+    <div class="curtain" id="curtain" hidden>
+      <div class="curtain-card">
+        <p class="stars" id="stars"></p>
+        <h2 id="verdict"></h2>
+        <p class="tally" id="tally"></p>
+        <p class="proof" id="proof"></p>
+        <div class="curtain-actions">
+          <button type="button" id="again">再渡一次</button>
+          <button type="button" id="next" class="primary">下一段</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <p class="crumbs" id="crumbs"></p>
+    <dl class="readout" id="readout"></dl>
+    <div class="controls">
+      <button type="button" id="undo">退回</button>
+      <button type="button" id="hint">提示</button>
+      <button type="button" id="demo">演示</button>
+      <button type="button" id="restart">重开</button>
+      <button type="button" id="share">分享</button>
+    </div>
+    <div class="shelf" id="shelf"></div>
+    <details class="about">
+      <summary>这一关的数字从哪来</summary>
+      <p>一条河是 <code>2n+1</code> 格睡莲，蛙只能朝前一步、或跳过<em>恰好一只对岸的蛙</em>落在空格里。所以局面只会往前走、永不回头：<code>js/core/solve.js</code> 把这一段河<strong>所有可达的局面</strong>穷尽走完（n=8 时 5093 个），每个局面到对岸的最短步数都是查表得来的事实。</p>
+      <p>这个数还被另外两条独立的路对过账：闭式 <code>n(n+2)</code>（两岸不等长时是 <code>ab+a+b</code>）与一个不建队列、只带记忆的深度优先搜索，n=1..9 逐位相同（<code>node test/solve.test.mjs</code>）。更狠的一条：<em>从可达局面出发的每一步，要么刚好花掉一个单位的最短距离，要么把这条河永久困死</em>——所以最优路线全游戏只有 2 条（开局左滑或右滑，之后每步都被逼死），而"多走了几步才到对岸"这件事在本玩法里根本不可能发生。</p>
+      <p>难度带也不是拍脑袋：每关印着的 <code>par</code> 在构建期由 <code>tools/bake.mjs</code> 量出来，写进 <code>js/data/lots.js</code>，再由 <code>node test/library.test.mjs</code> 从序列化之后的行重解一遍复现；复现不上就构建失败。</p>
+      <p class="save">成绩只存在这台设备的浏览器里（<span id="save-mode">…</span>）。<button type="button" id="wipe">清空存档</button></p>
+    </details>
+  </aside>
+</main>
+
+<p class="toast" id="toast" hidden></p>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

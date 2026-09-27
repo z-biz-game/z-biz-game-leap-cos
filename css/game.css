@@ -1,0 +1,232 @@
+/* 跳蛙渡 · LEAP — one stylesheet, no framework, no font files.
+ *
+ * The board's box is load-bearing rather than cosmetic: js/view.js measures the canvas with
+ * getBoundingClientRect() and maps every finger press through that measurement, so a canvas
+ * that never gets a height (the HTML default is 300x150) would draw a 17-pad river into a
+ * strip and the hit test would press the wrong lily pad. The `aspect-ratio` plus the
+ * min-height below are what tools/playtest.mjs @boot asserts, not decoration.
+ */
+
+:root {
+  --ink: #e6ecf3;
+  --ink-dim: #93a2b4;
+  --water: #0f1d24;
+  --water-deep: #08121a;
+  --edge: rgba(226, 232, 240, 0.12);
+  --leap: #63c76a;
+  --hop: #e0a54a;
+  --good: #7fe0a0;
+  --bad: #ff9d7a;
+  --card: #141c22;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(120% 100% at 50% 0%, var(--water) 0%, var(--water-deep) 70%);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px 16px;
+  padding: 14px 18px 8px;
+}
+
+.brand {
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.brand small { color: var(--ink-dim); font-size: 11px; letter-spacing: 0.22em; }
+.brand-mark { color: var(--leap); }
+
+.modes { display: flex; gap: 6px; }
+
+.modes button {
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  cursor: pointer;
+}
+
+.modes button[aria-current="true"] {
+  border-color: var(--leap);
+  color: var(--ink);
+  background: rgba(99, 199, 106, 0.12);
+}
+
+.totals { margin: 0 0 0 auto; color: var(--ink-dim); font-size: 13px; }
+.totals b { color: var(--ink); font-weight: 600; }
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  padding: 0 18px 26px;
+  align-items: start;
+}
+
+.board {
+  position: relative;
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  background: rgba(6, 14, 20, 0.7);
+  padding: 8px;
+  min-height: 320px;
+}
+
+/* The river keeps a wide box even on a phone: 17 pads need horizontal room, and the hop arc
+   needs vertical room above the water. */
+#river {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 320px;
+  border-radius: 12px;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.hint-line {
+  min-height: 22px;
+  margin: 8px 4px 2px;
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+
+.hint-line b { color: var(--ink); }
+.hint-line .no { color: var(--bad); }
+.hint-line .yes { color: var(--good); }
+
+.curtain {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 10, 14, 0.72);
+  border-radius: 16px;
+  backdrop-filter: blur(2px);
+}
+
+.curtain[hidden] { display: none; }
+
+.curtain-card {
+  width: min(92%, 380px);
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  text-align: center;
+}
+
+.stars { margin: 0; font-size: 30px; letter-spacing: 0.16em; color: var(--hop); }
+.curtain-card h2 { margin: 4px 0 8px; font-size: 19px; }
+.tally { margin: 0 0 6px; color: var(--ink-dim); font-size: 13px; }
+.tally b { color: var(--ink); }
+.proof { margin: 0 0 12px; font-size: 12px; color: var(--ink-dim); }
+.proof b { color: var(--good); }
+
+.curtain-actions { display: flex; gap: 8px; justify-content: center; }
+
+.panel {
+  border: 1px solid var(--edge);
+  border-radius: 16px;
+  padding: 12px 14px 14px;
+  background: rgba(10, 20, 26, 0.66);
+}
+
+.crumbs { margin: 0 0 10px; font-size: 14px; }
+.crumbs b { float: right; color: var(--ink-dim); font-weight: 500; font-size: 12px; }
+.crumbs .band { color: var(--ink-dim); }
+
+.readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin: 0 0 12px;
+}
+
+.readout > div { min-width: 0; }
+.readout dt { color: var(--ink-dim); font-size: 11px; }
+.readout dd { margin: 0; font-size: 19px; font-variant-numeric: tabular-nums; }
+.readout dd small { font-size: 11px; color: var(--ink-dim); }
+.readout .par dd { color: var(--good); }
+.readout .over dd { color: var(--hop); }
+.readout .bad dd { color: var(--bad); }
+
+.controls { display: flex; flex-wrap: wrap; gap: 6px; }
+
+button {
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--edge);
+  background: rgba(233, 241, 248, 0.05);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) { border-color: var(--leap); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.primary { border-color: var(--leap); background: rgba(99, 199, 106, 0.16); }
+button[aria-pressed="true"] { border-color: var(--hop); background: rgba(224, 165, 74, 0.16); }
+
+.shelf { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 5px; }
+.shelf p.tier { width: 100%; margin: 6px 0 2px; color: var(--ink-dim); font-size: 11px; }
+
+.shelf button {
+  min-width: 34px;
+  padding: 5px 7px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shelf button[data-tier], .shelf button[data-reroll] { min-width: 0; padding: 5px 9px; }
+.shelf button.wide { width: 100%; }
+.shelf button.here { border-color: var(--ink); }
+.shelf button.done { border-color: rgba(127, 224, 160, 0.5); color: var(--good); }
+.shelf button.perfect { background: rgba(99, 199, 106, 0.16); color: var(--good); border-color: var(--leap); }
+
+.about { margin-top: 14px; font-size: 12.5px; color: var(--ink-dim); }
+.about summary { cursor: pointer; color: var(--ink); font-size: 13px; }
+.about p { margin: 8px 0 0; }
+.about code { color: var(--hop); }
+.about em { color: var(--good); font-style: normal; }
+.about .save { display: flex; align-items: center; gap: 8px; }
+.about .save button { font-size: 11px; padding: 4px 8px; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.toast[hidden] { display: none; }
+
+@media (max-width: 860px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .totals { margin-left: 0; width: 100%; }
+  #river { min-height: 260px; }
+}

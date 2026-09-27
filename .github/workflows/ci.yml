@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The rules, the two searchers, the generator and the shipped pool are all pure ES modules:
+  # no browser and no install step. Two rows are the reason this job exists:
+  #   * solve.test.mjs — the reachable position set of every published river is walked
+  #     exhaustively, the optimum is cross-checked against a memoised DFS *and* against the
+  #     closed form n(n+2) / ab+a+b for n = 1..9, the optimal route count is pinned at 2, and the
+  #     chain theorem (every legal move either spends one unit of distance or strands the river)
+  #     is measured over all 1089 positions of the n=6 space;
+  #   * library.test.mjs — re-solves every row of js/data/lots.js from its serialised form, so a
+  #     hand-edited par or a stale bake fails the build instead of shipping.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: for f in js/*.js js/*/*.js server.cjs electron/main.cjs tools/*.mjs test/*.mjs; do node --check "$f"; done
+      - name: Suites
+        run: for f in test/*.test.mjs; do echo "::group::$f"; node "$f"; echo "::endgroup::"; done
+
+  # The shell is only proven by driving a real page with real mouse events: the canvas hit test,
+  # the refused-hop rule, the dead-water warning and the save file all live behind `window.leap`.
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Headless playtest
+        env:
+          SKIP_UNIT: 1
+          WD_TIMEOUT: 240
+        run: bash tools/verify.sh

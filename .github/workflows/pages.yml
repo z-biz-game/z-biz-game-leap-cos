@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # No bundler and no dependencies: the game ships plain ES modules, so the site is a file
+      # copy. Only these paths are reachable from index.html — keep the server, the electron
+      # shell, the bake tool, the tests and the CI config out of the artifact. js/data/lots.js is
+      # the 40 measured rows the panel prints par/route-count/state-count from; it is a source
+      # file like any other, and the distance table every hop is checked against is built by
+      # js/core/solve.js in the browser at lot load, so no generated asset has to be carried.
+      - name: Assemble static site
+        run: |
+          mkdir _site
+          cp index.html _site/
+          cp -r css js _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
