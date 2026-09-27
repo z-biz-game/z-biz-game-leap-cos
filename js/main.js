@@ -418,6 +418,10 @@ el.wipe.addEventListener('click', () => {
 
 window.addEventListener('hashchange', apply);
 window.addEventListener('resize', () => view.measure());
+// Runner viewports gain a vertical scrollbar after first paint, which narrows the content without
+// firing window 'resize'; measuring the canvas itself keeps the backing store honest.
+const layoutCanvas = view.canvas || document.querySelector('canvas');
+if (layoutCanvas && typeof ResizeObserver === 'function') new ResizeObserver(() => view.measure()).observe(layoutCanvas);
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = String(ev.key).toLowerCase();
