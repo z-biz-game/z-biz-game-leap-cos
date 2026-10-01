@@ -1,0 +1,197 @@
+{
+ "files": [
+  {
+   "bytes": 135823,
+   "h": 1024,
+   "mode": "RGBA",
+   "path": "icons/master-1024.png",
+   "sha256": "89ae2272ce90",
+   "w": 1024
+  },
+  {
+   "bytes": 61940,
+   "h": 512,
+   "mode": "RGBA",
+   "path": "icons/icon-512.png",
+   "sha256": "5bd5150c8f6c",
+   "w": 512
+  },
+  {
+   "bytes": 25279,
+   "h": 256,
+   "mode": "RGBA",
+   "path": "icons/icon-256.png",
+   "sha256": "a8785fa117c4",
+   "w": 256
+  },
+  {
+   "bytes": 17447,
+   "h": 192,
+   "mode": "RGBA",
+   "path": "icons/icon-192.png",
+   "sha256": "1570c08338fc",
+   "w": 192
+  },
+  {
+   "bytes": 6743,
+   "h": 96,
+   "mode": "RGBA",
+   "path": "icons/icon-96.png",
+   "sha256": "f81de7d73bb0",
+   "w": 96
+  },
+  {
+   "bytes": 3971,
+   "h": 64,
+   "mode": "RGBA",
+   "path": "icons/icon-64.png",
+   "sha256": "e2b4935dec93",
+   "w": 64
+  },
+  {
+   "bytes": 2367,
+   "h": 48,
+   "mode": "RGBA",
+   "path": "icons/icon-48.png",
+   "sha256": "381194b70e6a",
+   "w": 48
+  },
+  {
+   "bytes": 1412,
+   "h": 32,
+   "mode": "RGBA",
+   "path": "icons/icon-32.png",
+   "sha256": "c83327e09e75",
+   "w": 32
+  },
+  {
+   "bytes": 580,
+   "h": 16,
+   "mode": "RGBA",
+   "path": "icons/icon-16.png",
+   "sha256": "6257922b57a1",
+   "w": 16
+  },
+  {
+   "bytes": 17447,
+   "h": 192,
+   "mode": "RGBA",
+   "path": "icons/favicon.png",
+   "sha256": "1570c08338fc",
+   "w": 192
+  },
+  {
+   "bytes": 2367,
+   "h": 48,
+   "mode": "RGBA",
+   "path": "icons/favicon-48.png",
+   "sha256": "381194b70e6a",
+   "w": 48
+  },
+  {
+   "bytes": 1412,
+   "h": 32,
+   "mode": "RGBA",
+   "path": "icons/favicon-32.png",
+   "sha256": "c83327e09e75",
+   "w": 32
+  },
+  {
+   "bytes": 13350,
+   "h": 180,
+   "mode": "RGB",
+   "path": "icons/apple-touch-icon.png",
+   "sha256": "b8c749b0c118",
+   "w": 180
+  },
+  {
+   "bytes": 54818,
+   "h": 512,
+   "mode": "RGBA",
+   "path": "icons/icon-512-maskable.png",
+   "sha256": "805ceee5f77f",
+   "w": 512
+  },
+  {
+   "bytes": 16259,
+   "h": 192,
+   "mode": "RGBA",
+   "path": "icons/icon-192-maskable.png",
+   "sha256": "053737f1ca29",
+   "w": 192
+  },
+  {
+   "bytes": 38519,
+   "h": 512,
+   "mode": "RGBA",
+   "path": "game/water.png",
+   "sha256": "2e7ad35fa003",
+   "w": 512
+  },
+  {
+   "bytes": 17183,
+   "h": 256,
+   "mode": "RGBA",
+   "path": "game/pad.png",
+   "sha256": "1392dac7115c",
+   "w": 256
+  },
+  {
+   "bytes": 5279,
+   "h": 128,
+   "mode": "RGBA",
+   "path": "game/ripple.png",
+   "sha256": "9e35c819d6ec",
+   "w": 128
+  },
+  {
+   "bytes": 3480,
+   "h": 128,
+   "mode": "RGBA",
+   "path": "game/splash.png",
+   "sha256": "7602d230bb67",
+   "w": 128
+  },
+  {
+   "bytes": 72268,
+   "h": 128,
+   "mode": "RGBA",
+   "path": "game/bank.png",
+   "sha256": "85340e9f8893",
+   "w": 256
+  },
+  {
+   "bytes": 163545,
+   "h": 630,
+   "mode": "RGBA",
+   "path": "og/leap-og-1200x630.png",
+   "sha256": "14b4712e17e5",
+   "w": 1200
+  }
+ ],
+ "fonts": [
+  "Arial Bold.ttf",
+  "STHeiti Medium.ttc"
+ ],
+ "generator": "assets/gen/leap_art.py",
+ "palette": {
+  "arc": "#96e6ff",
+  "bank_l": "#2f4a2a",
+  "bank_l_deep": "#1d2f1c",
+  "bank_r": "#3a3325",
+  "bank_r_deep": "#241f16",
+  "good": "#7fe0a0",
+  "hop": "#e0a54a",
+  "ink": "#e6ecf3",
+  "leap": "#63c76a",
+  "pad": "#264a30",
+  "pad_rim": "#78be8c",
+  "reed_l": "#96c882",
+  "reed_r": "#c8b478",
+  "water": "#0f1d24",
+  "water_deep": "#08121a",
+  "water_mid": "#162d37"
+ },
+ "seed": 7855,
+ "supersample": 4
+}
