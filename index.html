@@ -5,9 +5,27 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101418">
 <meta name="description" content="跳蛙渡：两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。">
-<!-- Inline SVG data URI: no /favicon.ico request, so a 404 cannot pollute the console asserts
-     in tools/playtest.mjs, and no binary asset is added to the repo. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230f2a1e'/%3E%3Cellipse%20cx='16'%20cy='24'%20rx='11'%20ry='4'%20fill='%232f6b45'/%3E%3Ccircle%20cx='11'%20cy='15'%20r='5'%20fill='%2363c76a'/%3E%3Ccircle%20cx='21'%20cy='15'%20r='5'%20fill='%23e0a54a'/%3E%3Ccircle%20cx='9.6'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3Ccircle%20cx='22.4'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3C/svg%3E">
+<meta property="og:type" content="website">
+<meta property="og:title" content="跳蛙渡 · LEAP">
+<meta property="og:description" content="最短步数是量出来的：BFS 穷尽整条河 × 闭式 n(n+2) × 记忆化 DFS，三条独立的路对同一个数。">
+<meta property="og:image" content="assets/og/leap-og-1200x630.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="一条河上五片莲叶，绿蛙正越过琥珀蛙，虚线弧落到唯一的空位">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="assets/og/leap-og-1200x630.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="跳蛙渡">
+<!-- 位图由 assets/gen/leap_art.py 生成（母题即玩法：绿蛙越过琥珀蛙落入唯一空位）。
+     小尺寸走简化母题，五只蛙压到 16px 会糊成噪点。 -->
+<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icons/favicon.png">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>跳蛙渡 · LEAP</title>
 <link rel="stylesheet" href="css/game.css">
 </head>
@@ -20,6 +38,11 @@
     <button type="button" data-mode="random">随机</button>
   </nav>
   <p class="totals" id="totals"></p>
+  <div class="hud" role="group" aria-label="系统">
+    <button type="button" id="pause" aria-pressed="false" title="暂停 / 继续（P）">⏸ 暂停</button>
+    <button type="button" id="mute" aria-pressed="false" title="静音（M）">🔊 音效</button>
+    <button type="button" id="fs" title="全屏（F）">⛶ 全屏</button>
+  </div>
 </header>
 
 <main class="stage">
@@ -38,6 +61,23 @@
         </div>
       </div>
     </div>
+    <div class="veil" id="veil" hidden>
+      <p class="veil-word">已停桨</p>
+      <p class="veil-note">水面静止 —— 按 <b>P</b> 或点这里继续。暂停期间仿真不推进，落点与计时都留在原处。</p>
+    </div>
+    <div class="tutorial" id="tutorial" hidden>
+      <div class="tut-card">
+        <h2>怎么跳</h2>
+        <ol>
+          <li>一条河是 <b>2n+1</b> 片莲叶：左岸一列绿蛙朝右，右岸一列琥珀蛙朝左，中间恰好一片空位。</li>
+          <li>每只蛙只有两种走法：<b>朝前一步</b>落到前面的空位，或<b>越过恰好一只对岸的蛙</b>落在它后面的空位。</li>
+          <li>点一只蛙 = 走它唯一能走的那一步；也可以把它拖到目标叶上。走不通的会抖一下，不记账。</li>
+          <li>把两岸的蛙<em>完全互换</em>就渡过了这一段。面板上的「最短」是穷尽这条河所有可达局面量出来的。</li>
+        </ol>
+        <p class="tut-keys"><b>Enter</b>/<b>空格</b> 开局 · <b>P</b> 暂停 · <b>R</b> 重开 · <b>U</b> 退回 · <b>H</b> 提示 · <b>D</b> 演示 · <b>M</b> 静音 · <b>F</b> 全屏 · <b>?</b> 这一页</p>
+        <div class="tut-actions"><button type="button" id="tut-close" class="primary">知道了</button></div>
+      </div>
+    </div>
   </section>
 
   <aside class="panel">
@@ -48,6 +88,7 @@
       <button type="button" id="hint">提示</button>
       <button type="button" id="demo">演示</button>
       <button type="button" id="restart">重开</button>
+      <button type="button" id="howto">玩法</button>
       <button type="button" id="share">分享</button>
     </div>
     <div class="shelf" id="shelf"></div>

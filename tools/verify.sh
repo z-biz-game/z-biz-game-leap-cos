@@ -125,6 +125,11 @@ if [ -z "${SKIP_UNIT:-}" ]; then
   done
 fi
 
+echo "=== frame-rate independence (no browser) ==="
+# 假 DOM + 受控沙箱时钟，30/60/120Hz 三档对拍仿真计数器，并注入两处反向对照
+# （累加器吃帧数、拿帧 dt 直接积分）确认这两条判据真的会翻红。全程不起 Chrome。
+node tools/frame_rate_probe.mjs || FAILED=1
+
 export CDP_PORT
 export BASE_URL=$BASE
 node tools/playtest.mjs open "$BASE" | head -3

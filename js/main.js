@@ -21,6 +21,7 @@ import {
   tableFor, tierByKey, validateLot,
 } from './core/library.js';
 import { todayKey, hashSeed } from './core/rng.js';
+import { sfx } from './audio.js';
 import { createView } from './view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,6 +31,8 @@ const el = {
   verdict: $('verdict'), tally: $('tally'), proof: $('proof'), undo: $('undo'), hint: $('hint'),
   demo: $('demo'), restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
   toast: $('toast'), canvas: $('river'), wipe: $('wipe'), saveMode: $('save-mode'),
+  pause: $('pause'), mute: $('mute'), fs: $('fs'), howto: $('howto'), tutorial: $('tutorial'),
+  tutClose: $('tut-close'), veil: $('veil'),
 };
 
 const LOTS = ALL.length;
@@ -102,6 +105,7 @@ function resolve(rt) {
 const view = createView(el.canvas, {
   onMove: (m) => commit(m),
   onIllegal: (pad, board, tried) => {
+    sfx.refuse();
     const species = board[pad] === LEAP ? '左岸蛙' : '右岸蛙';
     el.hintline.innerHTML = tried === undefined
       ? `<span class="no">${pad + 1} 号莲叶上的${species}现在无路可走</span> —— 前面必须是空格，或恰好一只对岸的蛙加一个空格`
@@ -111,6 +115,9 @@ const view = createView(el.canvas, {
 
 function setGame(lot, label) {
   stopDemo('');
+  demoWasRunning = false;
+  paused = false;                 // view.attach 会解暂停，外壳的标志必须跟着走
+  renderPauseButton();
   app.lot = lot;
   app.label = label || app.label;
   const withTable = { ...lot, table: lot.table || tableFor(lot) };
@@ -226,6 +233,10 @@ function commit(move) {
     return false;
   }
   if (took.stranded) app.strands++;
+  // 一次落蛙只发一个声：通关那一步不再叠落水的声音。
+  if (app.game.done) sfx.win();
+  else if (took.kind === 'hop') sfx.hop();
+  else sfx.step();
   if (app.game.done) {
     finish();
     return took;
@@ -346,6 +357,119 @@ function stopDemo(note) {
   if (note) say(note);
 }
 
+// ---------------------------------------------------------------- HUD：暂停 / 静音 / 全屏 / 玩法
+let paused = false;
+let demoWasRunning = false;
+
+function renderPauseButton() {
+  el.pause.textContent = paused ? '▶ 继续' : '⏸ 暂停';
+  el.pause.setAttribute('aria-pressed', String(paused));
+  el.veil.hidden = !paused;
+}
+
+// 暂停做三件事，缺一件就是假暂停：
+//   1) view.setPaused → 累加器不再吃帧 dt（js/view.js advanceSim 首行 return）；
+//   2) 演示定时器停掉，恢复后从当前局面继续走，不重放也不跳步；
+//   3) 水面不接受落点（view.down 里 paused 判掉）。
+// 恢复后 moves/left/board/particles 全在原地 —— 实测见 commit 正文。
+function setPaused(next, note) {
+  const want = !!next;
+  if (want === paused) return paused;
+  paused = want;
+  view.setPaused(paused);
+  if (paused) {
+    demoWasRunning = !!demoTimer;
+    stopDemo('');
+  } else if (demoWasRunning) {
+    demoWasRunning = false;
+    startDemo();
+  }
+  renderPauseButton();
+  if (note) say(note);
+  return paused;
+}
+
+function renderMuteButton() {
+  el.mute.textContent = sfx.muted ? '🔇 静音' : '🔊 音效';
+  el.mute.setAttribute('aria-pressed', String(sfx.muted));
+}
+
+// 静音不是把 gain 设 0：sfx.setMuted 会 suspend 掉 AudioContext（时钟停住），并把
+// 建节点的入口关掉（后续 hop/step/win 一个振荡器都不建）。状态进存档，刷新后仍然静音。
+function setMuted(next, note) {
+  const m = sfx.setMuted(next);
+  store.setMuted(m);
+  renderMuteButton();
+  if (note) toast(note);
+  return m;
+}
+
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || null;
+}
+
+function toggleFullscreen() {
+  if (fullscreenElement()) {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) exit.call(document);
+    return true;
+  }
+  const root = document.documentElement;
+  const req = root.requestFullscreen || root.webkitRequestFullscreen;
+  if (typeof req !== 'function') {
+    toast('这个浏览器不允许网页全屏（iOS Safari 就是这一个）');
+    return false;
+  }
+  Promise.resolve(req.call(root)).catch(() => toast('全屏请求被拒绝了'));
+  return false;
+}
+
+function syncFullscreenButton() {
+  const on = !!fullscreenElement();
+  el.fs.textContent = on ? '⛶ 退出全屏' : '⛶ 全屏';
+  el.fs.setAttribute('aria-pressed', String(on));
+  return on;
+}
+
+document.addEventListener('fullscreenchange', syncFullscreenButton);
+document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+
+// 玩法页借走一次暂停，读完就得还回来；但如果玩家本来就自己按了暂停，关掉说明页不该替他继续。
+let tutorialTookPause = false;
+
+function setTutorial(show, note) {
+  el.tutorial.hidden = !show;
+  el.howto.setAttribute('aria-pressed', String(show));
+  if (show) {
+    if (!paused) {
+      tutorialTookPause = true;
+      setPaused(true, '');
+    }
+  } else if (tutorialTookPause) {
+    tutorialTookPause = false;
+    setPaused(false, note || '回到河面 —— 按 ? 还能叫出这一页');
+  } else if (note) say(note);
+  return show;
+}
+
+el.pause.addEventListener('click', () => setPaused(!paused));
+el.mute.addEventListener('click', () => {
+  const next = !sfx.muted;
+  setMuted(next, next ? '已静音：AudioContext 已 suspend，不再新建发声节点' : '音效已开');
+});
+el.fs.addEventListener('click', toggleFullscreen);
+el.howto.addEventListener('click', () => setTutorial(el.tutorial.hidden));
+el.tutClose.addEventListener('click', () => setTutorial(false, '回到河面，按 ? 还能叫出这一页'));
+el.veil.addEventListener('click', () => setPaused(false, '继续 —— 水面重新开始走表'));
+el.tutorial.addEventListener('click', (ev) => { if (ev.target === el.tutorial) setTutorial(false); });
+
+// AudioContext 只能在真实用户手势里建：headless Chrome 在没有手势时创建会打
+// "not allowed to start" 的 warning，而 tools/verify.sh 把 console 不干净判失败。
+function armAudio() { sfx.arm(); }
+window.addEventListener('pointerdown', armAudio);
+window.addEventListener('keydown', armAudio);
+window.addEventListener('click', armAudio);
+
 el.modes.addEventListener('click', (ev) => {
   const b = ev.target.closest('button[data-mode]');
   if (!b) return;
@@ -357,6 +481,7 @@ el.modes.addEventListener('click', (ev) => {
 el.undo.addEventListener('click', () => {
   stopDemo('');
   if (undo(app.game)) {
+    sfx.undo();
     view.redraw();
     renderCrumbs();
     const left = remaining(app.game);
@@ -386,10 +511,13 @@ el.demo.addEventListener('click', () => {
 
 function restart() {
   stopDemo('');
+  demoWasRunning = false;
+  setPaused(false, '');
   reset(app.game);
   app.hints = 0;
   app.strands = 0;
   el.curtain.hidden = true;
+  view.clearTransients();     // 弧/抖/提示环/水珠/累加余额一律清零，否则"回到起点"的画面对不上
   view.redraw();
   render();
   say('回到起点');
@@ -425,7 +553,23 @@ if (layoutCanvas && typeof ResizeObserver === 'function') new ResizeObserver(() 
 window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = String(ev.key).toLowerCase();
-  if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
+  // Enter / 空格 是"开始"和"继续"，绝不是暂停：把空格绑成暂停，玩家一键就把水面冻住，
+  // 而光标落在按钮上时空格还会顺带触发它自己的 click —— 所以这两个键一律先 preventDefault。
+  if (k === 'enter' || k === ' ') {
+    ev.preventDefault();
+    if (!el.tutorial.hidden) setTutorial(false);
+    else if (paused) setPaused(false, '继续 —— 水面重新开始走表');
+    else if (!el.curtain.hidden && !el.next.hidden) el.next.click();
+    else if (!el.curtain.hidden) el.again.click();
+    return;
+  }
+  if (k === '?' || (k === '/' && ev.shiftKey)) { ev.preventDefault(); setTutorial(el.tutorial.hidden); return; }
+  if (k === 'p') { ev.preventDefault(); setPaused(!paused); return; }
+  if (k === 'm') { el.mute.click(); return; }
+  if (k === 'f') { toggleFullscreen(); return; }
+  if (k === 'escape' && !el.tutorial.hidden) setTutorial(false);
+  else if (k === 'escape' && paused && el.curtain.hidden) setPaused(false, '继续 —— 水面重新开始走表');
+  else if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
   else if (k === 'u') el.undo.click();
   else if (k === 'h') el.hint.click();
   else if (k === 'r') el.restart.click();
@@ -436,13 +580,26 @@ view.start();
 // Deliberately not paused on visibilitychange: the hop animation and the win card are driven
 // from the same loop, and a tab that reports itself hidden (headless Chrome does) must still be
 // able to finish a river.
+setMuted(store.muted);            // 静音是存档里的设置，不是一次性的按钮状态
+renderPauseButton();
+syncFullscreenButton();
 apply();
 probeProof();
+
+// file:// 上注册 SW 必失败，而且失败是 unhandled rejection —— tools/verify.sh 的 console
+// 干净门槛就是把这类噪声判红，所以只在 http(s) 下注册。
+if (/^https?:$/.test(location.protocol) && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js', { scope: './' })
+      .catch(() => { /* 离线注册失败不影响这一局，只是下次少一层缓存 */ });
+  });
+}
 
 window.leap = {
   version: 1,
   get state() {
     const left = app.game ? remaining(app.game) : null;
+    const sim = view.stats();
     return {
       mode: app.mode,
       label: app.label,
@@ -467,6 +624,16 @@ window.leap = {
       solved: ALL.filter((l) => store.record(l.id) && store.record(l.id).solved).length,
       curtain: !el.curtain.hidden,
       demo: !!demoTimer,
+      paused,
+      muted: sfx.muted,
+      audioArmed: sfx.armed,
+      tutorial: !el.tutorial.hidden,
+      fullscreen: !!fullscreenElement(),
+      reducedMotion: sim.reducedMotion,
+      artLoaded: sim.artLoaded,
+      simSteps: sim.simSteps,
+      renderClock: sim.renderClock,
+      particles: sim.particles,
     };
   },
   get pool() { return poolStats(); },
@@ -523,6 +690,15 @@ window.leap = {
   demoStop() { stopDemo(''); return demoTimer === 0; },
   pixels() { return view.pixelsHash(); },
   painted() { return view.painted(); },
+  // 帧率对拍读的是仿真计数器本身（步数、仿真时钟、粒子位置和），不是墙钟也不是像素：
+  // 三档帧率下这一组数逐位相同才算"仿真与帧率无关"。
+  sim() { return view.stats(); },
+  pause(v) { return setPaused(v === undefined ? !paused : !!v); },
+  mute(v) { return setMuted(v === undefined ? !sfx.muted : !!v); },
+  audio() { return sfx.state; },
+  reduceMotion(v) { return view.setReducedMotion(v === undefined ? !view.reducedMotion : !!v); },
+  howto(v) { return setTutorial(v === undefined ? el.tutorial.hidden : !!v); },
+  fullscreen() { return toggleFullscreen(); },
   validate(row) { return validateLot(row); },
   solveNow(board) { return solveBoard(board); },
   reset() { restart(); return app.game.moves; },

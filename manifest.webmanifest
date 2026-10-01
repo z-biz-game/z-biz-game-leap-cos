@@ -1,0 +1,56 @@
+{
+  "name": "跳蛙渡 Leap",
+  "short_name": "跳蛙渡",
+  "description": "两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#08121a",
+  "theme_color": "#101418",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "categories": ["games", "puzzle"],
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/icon-192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "assets/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "每日跳蛙渡",
+      "short_name": "每日",
+      "url": "./#/daily",
+      "icons": [{ "src": "assets/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+    },
+    {
+      "name": "随机河段",
+      "short_name": "随机",
+      "url": "./#/random/shoal",
+      "icons": [{ "src": "assets/icons/icon-96.png", "sizes": "96x96", "type": "image/png" }]
+    }
+  ]
+}

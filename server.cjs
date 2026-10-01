@@ -11,11 +11,13 @@ const TYPES = {
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.cjs': 'text/javascript; charset=utf-8',
+  '.webmanifest': 'application/manifest+json; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
 };
 
 function createServer(root = __dirname) {
@@ -36,9 +38,9 @@ function createServer(root = __dirname) {
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) {
         // A 404 is a real answer, but it is never an expected one here: index.html asks for
-        // exactly css/game.css, js/main.js and js/**, and the favicon is an inline data URI.
-        // Anything missing therefore means a file that Pages' `cp index.html css js` would also
-        // have failed to ship.
+        // exactly css/game.css, js/**, the PNGs under assets/, manifest.webmanifest and sw.js.
+        // Anything missing therefore means a file that Pages' assemble step would also have
+        // failed to ship.
         res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('404');
         return;
       }

@@ -39,31 +39,32 @@ function backend() {
   return ls;
 }
 
-function readRaw(ls) {
-  if (!ls) return null;
+// 三条裸操作就是存档的全部对外接触面：每次都真读 / 真写 / 真删，都在 try 里，因为
+// Safari 私有模式下连属性访问都会 throw。测试换掉的是 globalThis.localStorage 本身，
+// 所以这里不再留"注入一个后端"的第二条路 —— 两条路只会让"到底哪条在线上跑"变成猜测。
+function readRaw() {
   try {
-    return ls.getItem(SAVE_KEY);
+    return globalThis.localStorage.getItem(SAVE_KEY);
   } catch (err) {
-    return null; // backend() probed it once; a later throw is still possible
+    return null; // 没有 localStorage（node）、属性本身 throw（隐私模式）、或读失败
   }
 }
 
-function writeRaw(ls, value) {
-  if (!ls) return false;
+function writeRaw(value) {
   try {
-    ls.setItem(SAVE_KEY, value);
+    globalThis.localStorage.setItem(SAVE_KEY, value);
     return true;
   } catch (err) {
-    return false; // quota, or a profile that only lets you read
+    return false; // quota，或一个只允许你读的 profile
   }
 }
 
-function dropRaw(ls) {
-  if (!ls) return;
+function dropRaw() {
   try {
-    ls.removeItem(SAVE_KEY);
+    globalThis.localStorage.removeItem(SAVE_KEY);
+    return true;
   } catch (err) {
-    /* nothing was ever persisted */
+    return false;
   }
 }
 
@@ -81,16 +82,36 @@ export function blank() {
     daily: {},
     unlocked: 1,
     stats: { solves: 0, perfect: 0, hops: 0, hints: 0 },
+    settings: { muted: false },
   };
 }
 
 let cache = null;
 let lastMode = null;
 
+// 第二段解码：daily 与 records 一样是"外部键 → 外部值"，一条坏记录只丢那一条。
+// 整份存档只在 JSON.parse 这一层 throw，任何一条记录都不该把整局冻死。
+function sanitizeDaily(d) {
+  const out = {};
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return out;
+  for (const [day, row] of Object.entries(d)) {
+    if (!row || typeof row !== 'object') continue;
+    const id = typeof row.id === 'string' && row.id ? row.id.slice(0, 24) : null;
+    if (!id) continue;
+    const at = Number(row.at);
+    out[day] = { id, at: Number.isFinite(at) && at > 0 ? Math.floor(at) : 0 };
+  }
+  return out;
+}
+
+function sanitizeSettings(s) {
+  return { muted: !!(s && typeof s === 'object' && s.muted === true) };
+}
+
 function load() {
   if (cache) return cache;
-  const ls = backend();
-  const raw = readRaw(ls);
+  backend();                       // 探一次后端的可用性（storageMode 要说实话）
+  const raw = readRaw();
   if (raw) {
     try {
       const p = JSON.parse(raw);
@@ -105,7 +126,7 @@ function load() {
         }
         cache = {
           records: Object.keys(records).length || !p.records ? records : base.records,
-          daily: p.daily && typeof p.daily === 'object' ? p.daily : base.daily,
+          daily: sanitizeDaily(p.daily),
           unlocked: count(p.unlocked) || base.unlocked,
           stats: {
             solves: count(p.stats && p.stats.solves),
@@ -113,6 +134,7 @@ function load() {
             hops: count(p.stats && p.stats.hops),
             hints: count(p.stats && p.stats.hints),
           },
+          settings: sanitizeSettings(p.settings),
         };
         if (lastMode === null) lastMode = 'memory';
         return cache;
@@ -127,7 +149,7 @@ function load() {
 }
 
 function persist() {
-  const wrote = writeRaw(backend(), JSON.stringify(cache));
+  const wrote = writeRaw(JSON.stringify(cache));
   lastMode = wrote ? 'disk' : 'memory';
   return wrote;
 }
@@ -201,14 +223,21 @@ export const store = {
     return load().daily[dateKey] || null;
   },
 
+  get muted() { return load().settings.muted; },
+  setMuted(v) {
+    const s = load();
+    s.settings.muted = !!v;
+    persist();
+    return s.settings.muted;
+  },
+
   // Wipe: the in-memory cache *and* whatever is on disk. A stale cache surviving a wipe would
   // be worse than no wipe at all, because the screen would say "cleared" and the records would
   // come back on the next load.
   reset() {
     cache = blank();
-    const ls = backend();
-    dropRaw(ls);
-    lastMode = ls ? 'disk' : 'memory';
+    dropRaw();
+    lastMode = backend() ? 'disk' : 'memory';
     return cache;
   },
 };

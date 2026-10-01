@@ -15,6 +15,35 @@ import { GAP, HOP, LEAP, boardKey, dirOf, distance, isGoal, legalMoves } from '.
 const PAD = 22;
 const HOP_MS = 260;      // one arcing hop, start to settle
 const SLIDE_MS = 170;    // one step onto the free pad
+// 定步长仿真：粒子只吃 SIM_STEP，不吃帧 dt。帧率改变只改变"这一步被跑几次"，
+// 同一虚拟时长跑出的步数与轨迹因此逐位相同 —— 这是 §帧率无关 的结构性保证。
+const SIM_STEP = 1 / 120;
+const MAX_CATCHUP = 8;   // 一帧最多补 8 步：掉帧就丢时间，不追帧（追帧会雪崩）
+const GRAVITY = 620;     // px/s²，只作用于溅起的水珠
+// 水珠寿命 + 最长的落定动画（HOP_MS）必须小于 tools/playtest.mjs 在"一步之后比对画面"前
+// 留出的窗口（实测 560ms），否则 pixelsHash() 就还是时钟的函数而不是局面的函数。
+const SPLASH_LIFE = 0.26;
+const RING_LIFE = 0.22;
+const REDUCE_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+// 位图全部由 assets/gen/leap_art.py 生成；加载失败（file://、离线、被插件拦）时
+// 每一处绘制都有程序化回落，画面退化成手绘矢量而不是空白。
+const ART = {
+  water: 'assets/game/water.png',
+  pad: 'assets/game/pad.png',
+  ripple: 'assets/game/ripple.png',
+  splash: 'assets/game/splash.png',
+  bank: 'assets/game/bank.png',
+};
+
+function prefersReducedMotion() {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  try {
+    return !!window.matchMedia(REDUCE_MOTION_QUERY).matches;
+  } catch (err) {
+    return false;
+  }
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -42,6 +71,106 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   let raf = 0;
   let last = 0;
   let warm = 0;                    // the first frames always repaint, so the canvas is never blank
+  // ---- 时间层：累加器 + 定步长 + 粒子（全部帧率无关，见 SIM_STEP 处的注释）
+  let simAccumulator = 0;
+  let simSteps = 0;
+  let renderClock = 0;             // 只累加定步长，不累加墙钟：三档帧率下同一虚拟时长必须同值
+  let particles = [];              // {x,y,vx,vy,age,life,kind}  kind: 'drop' | 'ring'
+  let paused = false;
+  let reducedMotion = prefersReducedMotion();
+  const art = {};                  // 解码完成的位图（null = 加载失败，走程序化回落）
+  const patterns = {};             // ctx.createPattern 的缓存，按图缓存一次
+
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    try {
+      const mq = window.matchMedia(REDUCE_MOTION_QUERY);
+      const follow = (ev) => { reducedMotion = !!ev.matches; if (reducedMotion) particles = []; };
+      if (typeof mq.addEventListener === 'function') mq.addEventListener('change', follow);
+      else if (typeof mq.addListener === 'function') mq.addListener(follow);   // Safari < 14
+    } catch (err) {
+      /* 没有 matchMedia 就按"不减弱"画，粒子仍然定步长 */
+    }
+  }
+
+  function loadArt() {
+    if (typeof Image !== 'function') return;
+    for (const [key, src] of Object.entries(ART)) {
+      const im = new Image();
+      im.onload = () => {
+        art[key] = im;
+        delete patterns[key];
+        draw();
+      };
+      im.onerror = () => {
+        art[key] = null;           // 纹理缺席只是退回矢量画法，不是白屏
+        draw();
+      };
+      im.src = src;
+    }
+  }
+
+  function patternOf(key) {
+    if (!art[key]) return null;
+    if (!patterns[key]) {
+      try {
+        patterns[key] = ctx.createPattern(art[key], 'repeat');
+      } catch (err) {
+        patterns[key] = null;
+      }
+    }
+    return patterns[key];
+  }
+
+  function spawnSplash(x, y, power) {
+    if (reducedMotion) return;     // 减弱动效：不溅水珠、不铺涟漪，蛙照样落定
+    const drops = Math.max(4, Math.round(6 * power));
+    for (let i = 0; i < drops; i++) {
+      const a = -Math.PI / 2 + (i - (drops - 1) / 2) * 0.34;
+      const v = (58 + 26 * ((i % 3) - 1)) * power;
+      particles.push({ kind: 'drop', x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, age: 0, life: SPLASH_LIFE });
+    }
+    particles.push({ kind: 'ring', x, y, vx: 0, vy: 0, age: 0, life: RING_LIFE });
+  }
+
+  // 一仿真步：位移、阻尼、寿命全部按 dt 积分，没有任何"每帧一次"的写法。
+  function stepSim(dt) {
+    renderClock += dt;
+    simSteps++;
+    if (!particles.length) return;
+    for (const p of particles) {
+      p.age += dt;
+      if (p.kind === 'drop') {
+        p.vy += GRAVITY * dt;
+        p.vx *= Math.pow(0.86, dt * 60);
+      }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+    }
+    particles = particles.filter((p) => p.age < p.life);
+  }
+
+  // 累加器吃帧 dt（这是唯一吃帧 dt 的地方），定步长循环把它换成整数个 SIM_STEP。
+  function advanceSim(elapsed) {
+    if (paused) return false;
+    simAccumulator += elapsed;
+    let steps = 0;
+    while (simAccumulator >= SIM_STEP && steps < MAX_CATCHUP) {
+      simAccumulator -= SIM_STEP;
+      steps++;
+      stepSim(SIM_STEP);
+    }
+    if (steps === MAX_CATCHUP) simAccumulator = 0;   // 丢时间，不欠债
+    return steps > 0;
+  }
+
+  function clearTimeLayer() {
+    particles = [];
+    simAccumulator = 0;
+    renderClock = 0;
+    simSteps = 0;
+  }
+
+  loadArt();
 
   // ---------------------------------------------------------------- geometry
 
@@ -142,9 +271,43 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
 
   function shakeOffset(now) {
     if (!shake) return 0;
+    if (reducedMotion) { shake = null; return 0; }   // 抖动属于动效，减弱动效时直接不成立
     const t = (now - shake.t0) / 240;
     if (t >= 1) { shake = null; return 0; }
     return Math.sin(t * 26) * (1 - t) * geom.r * 0.4;
+  }
+
+  // 粒子由 stepSim 定步长积分到这里被画，位置已经是"第 N 个 SIM_STEP"的函数，
+  // 与这一帧是 30/60/120Hz 无关。
+  function drawParticles() {
+    if (!particles.length) return;
+    ctx.save();
+    for (const p of particles) {
+      const t = Math.max(0, Math.min(1, p.age / p.life));
+      const a = 1 - t;
+      if (p.kind === 'ring') {
+        const rad = geom.r * (0.8 + t * 1.7);
+        if (art.ripple) {
+          ctx.globalAlpha = a * 0.75;
+          ctx.drawImage(art.ripple, p.x - rad, p.y - rad, rad * 2, rad * 2);
+        } else {
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = `rgba(190, 235, 255, ${(a * 0.5).toFixed(3)})`;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(p.x, p.y, rad, rad * 0.42, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        const s = Math.max(1.2, geom.r * 0.2 * a);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `rgba(205, 240, 255, ${(0.6 * a).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
   }
 
   // ---------------------------------------------------------------- drawing
@@ -160,6 +323,19 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     ctx.fillStyle = grad;
     roundRect(ctx, 8, 8, w - 16, h - 16, 14);
     ctx.fill();
+
+    // 生成的水面位图（assets/game/water.png，横向整数周期所以平铺无缝）压在渐变上；
+    // 图不在（file://、离线、解码失败）就只留渐变，画面退化但不缺元素。
+    const water = patternOf('water');
+    if (water) {
+      ctx.save();
+      roundRect(ctx, 8, 8, w - 16, h - 16, 14);
+      ctx.clip();
+      ctx.globalAlpha = stranded ? 0.22 : 0.42;
+      ctx.fillStyle = water;
+      ctx.fillRect(8, 8, w - 16, h - 16);
+      ctx.restore();
+    }
 
     // Ripples: a few sine bands, positioned by the lot's own `ripple` so two rivers of the same
     // width do not wear the same water.
@@ -195,6 +371,16 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       ctx.fillStyle = g;
       roundRect(ctx, x0, y - pitch * 1.15, x1 - x0, pitch * 2.3, 8);
       ctx.fill();
+      const bankPat = patternOf('bank');
+      if (bankPat) {
+        ctx.save();
+        roundRect(ctx, x0, y - pitch * 1.15, x1 - x0, pitch * 2.3, 8);
+        ctx.clip();
+        ctx.globalAlpha = 0.34;
+        ctx.fillStyle = bankPat;
+        ctx.fillRect(x0, y - pitch * 1.15, x1 - x0, pitch * 2.3);
+        ctx.restore();
+      }
       // Reeds, count fixed by the lot so the picture is reproducible from the seed alone.
       const reeds = 2 + ((skin && skin.reeds) || 0) % 3;
       ctx.strokeStyle = dirName === 'left' ? 'rgba(150, 200, 130, 0.5)' : 'rgba(200, 180, 120, 0.45)';
@@ -228,22 +414,28 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
         continue;
       }
       // A lily pad under each frog, cut with the classic notch.
-      ctx.fillStyle = 'rgba(38, 74, 48, 0.92)';
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y + r * 0.52, r * 1.24, r * 0.62, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(120, 190, 140, 0.24)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(c.x, c.y + r * 0.52, r * 1.24, r * 0.62, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      if (pitch > 26) {
-        ctx.fillStyle = 'rgba(20, 44, 28, 0.9)';
+      const sprite = art.pad;
+      if (sprite) {
+        const rx = r * 1.24;
+        ctx.drawImage(sprite, c.x - rx, c.y + r * 0.52 - rx, rx * 2, rx * 2);
+      } else {
+        ctx.fillStyle = 'rgba(38, 74, 48, 0.92)';
         ctx.beginPath();
-        ctx.moveTo(c.x, c.y + r * 0.52);
-        ctx.arc(c.x, c.y + r * 0.52, r * 1.24, -0.5, -1.15, true);
-        ctx.closePath();
+        ctx.ellipse(c.x, c.y + r * 0.52, r * 1.24, r * 0.62, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = 'rgba(120, 190, 140, 0.24)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(c.x, c.y + r * 0.52, r * 1.24, r * 0.62, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        if (pitch > 26) {
+          ctx.fillStyle = 'rgba(20, 44, 28, 0.9)';
+          ctx.beginPath();
+          ctx.moveTo(c.x, c.y + r * 0.52);
+          ctx.arc(c.x, c.y + r * 0.52, r * 1.24, -0.5, -1.15, true);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
     }
   }
@@ -319,13 +511,20 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       }
     }
     if (hint && hint.pad === p && now < hint.until) {
-      const t = (now % 1100) / 1100;
+      // reduceMotion 分支：脉冲项来自墙钟，减弱动效时退化成一张静图环。
+      const t = reducedMotion ? 0.3 : (now % 1100) / 1100;
+      const rad = r * (1.35 + t * 0.5);
       ctx.save();
-      ctx.lineWidth = 2 + t * 4;
-      ctx.strokeStyle = `rgba(140, 225, 255, ${(0.9 - t * 0.6).toFixed(3)})`;
-      ctx.beginPath();
-      ctx.arc(x, y, r * (1.35 + t * 0.5), 0, Math.PI * 2);
-      ctx.stroke();
+      if (art.ripple && !reducedMotion) {
+        ctx.globalAlpha = 0.9 - t * 0.55;
+        ctx.drawImage(art.ripple, x - rad, y - rad, rad * 2, rad * 2);
+      } else {
+        ctx.lineWidth = 2 + t * 4;
+        ctx.strokeStyle = `rgba(140, 225, 255, ${(0.9 - t * 0.6).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, rad, 0, Math.PI * 2);
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }
@@ -366,6 +565,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     drawBanks(game.skin);
     drawPads();
     for (let p = 0; p < cells; p++) if (game.board[p] !== GAP) drawFrog(p, now);
+    drawParticles();
     drawStranded(now);
   }
 
@@ -376,7 +576,10 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   // and pixelsHash() stays a fingerprint of the position rather than of the clock.
   function syncAnim(now) {
     if (anim && now - anim.t0 >= anim.ms) {
+      const landed = anim;
       anim = null;                                      // one last frame at the settled geometry
+      const c = centreOf(landed.to);
+      spawnSplash(c.x, c.y + geom.r * 0.45, landed.span === 1 ? 0.62 : 1);
       return true;
     }
     if (!game) return false;
@@ -394,20 +597,25 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     const from = oldBoard[moves[0]] === GAP ? moves[1] : moves[0];
     const to = from === moves[0] ? moves[1] : moves[0];
     const span = Math.abs(to - from);
-    anim = { from, to, t0: now, ms: span === 1 ? SLIDE_MS : HOP_MS, arc: span === 1 ? geom.r * 0.35 : geom.r * 1.7 };
+    anim = { from, to, t0: now, span, ms: span === 1 ? SLIDE_MS : HOP_MS, arc: span === 1 ? geom.r * 0.35 : geom.r * 1.7 };
     return true;
   }
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
+    // 帧 dt 只进累加器；仿真本身跑 SIM_STEP。elapsed 上限 0.25s：切后台回来的那一跳
+    // 不该补出 40 步仿真，那是把卡顿当成时间。
+    const elapsed = last ? Math.min(0.25, (now - last) / 1000) : 0;
     last = now;
-    const busy = anim !== null || shake !== null || drag !== null || (!!hint && now < hint.until);
+    const ticked = advanceSim(elapsed);
+    const busy = anim !== null || shake !== null || drag !== null || particles.length > 0
+      || (!!hint && now < hint.until);
     if (hint && now >= hint.until) hint = null;
     syncAnim(now);
     // The river repaints every frame while a hop, a shake or a hint ring is alive, and for four
     // warm-up frames after a load; an untouched river then stops drawing, which is what keeps
     // pixelsHash() a fingerprint of the *position* rather than of the clock.
-    if (busy || warm < 4) { warm++; draw(now); }
+    if (busy || ticked || warm < 4) { warm++; draw(now); }
   }
 
   // ---------------------------------------------------------------- the pointer
@@ -418,7 +626,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   }
 
   function down(ev) {
-    if (!game || game.done) return;
+    if (!game || game.done || paused) return;   // 暂停期间水面不接受落点
     const p = localPoint(ev);
     const pad = padAt(p.x, p.y);
     if (pad < 0) return;                       // bare water is not a frog, and costs nothing
@@ -436,6 +644,13 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     drag.y = p.y;
   }
 
+  function refuse(pad, tried) {
+    shake = { pad, t0: performance.now() };
+    const c = centreOf(pad);
+    spawnSplash(c.x, c.y + geom.r * 0.4, 0.45);
+    if (onIllegal) onIllegal(pad, game.board, tried);
+  }
+
   function up(ev) {
     if (!drag) return;
     const p = localPoint(ev);
@@ -449,19 +664,12 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       // most one free pad it could reach, so no disambiguation menu is needed.
       const m = frameMoves.get(started);
       if (m) ask(m);
-      else {
-        shake = { pad: started, t0: performance.now() };
-        if (onIllegal) onIllegal(started, game.board);
-      }
+      else refuse(started);
       draw();
       return;
     }
     if (target >= 0 && pad === target) { ask({ from: started, to: target }); draw(); return; }
-    if (pad >= 0 && pad !== started) {
-      // dragged somewhere the rules do not reach: refused, unbilled, and shown as such
-      shake = { pad: started, t0: performance.now() };
-      if (onIllegal) onIllegal(started, game.board, pad);
-    }
+    if (pad >= 0 && pad !== started) refuse(started, pad);   // dragged somewhere the rules do not reach
     draw();
   }
 
@@ -469,6 +677,20 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   canvas.addEventListener('pointermove', move_);
   window.addEventListener('pointerup', up);
   canvas.addEventListener('pointercancel', () => { drag = null; });
+  // 没有 PointerEvent 的引擎（老 WebView）回落到 touchstart / mousedown。两族事件都只被
+  // 换成 {clientX, clientY}，坐标仍然走 localPoint 的 getBoundingClientRect 换算 ——
+  // 手机上点 A 打 B 的成因永远是拿 pageX 或对 CSS 像素做了 dpr 乘法，而不是事件类型。
+  if (typeof window !== 'undefined' && typeof window.PointerEvent !== 'function') {
+    const wrap = (ev) => {
+      const t = (ev.touches && ev.touches[0]) || (ev.changedTouches && ev.changedTouches[0]) || ev;
+      return { clientX: t.clientX, clientY: t.clientY, preventDefault: () => ev.preventDefault() };
+    };
+    canvas.addEventListener('touchstart', (ev) => down(wrap(ev)), { passive: false });
+    canvas.addEventListener('touchmove', (ev) => move_(wrap(ev)), { passive: false });
+    canvas.addEventListener('touchend', (ev) => up(wrap(ev)), { passive: false });
+    canvas.addEventListener('mousedown', (ev) => down(wrap(ev)));
+    window.addEventListener('mouseup', (ev) => up(wrap(ev)));
+  }
 
   // The canvas's box is decided by CSS, and a `window` resize does not always follow it: a phone
   // rotating, the panel reflowing or a devtools split all change the box. The hit test maps
@@ -491,9 +713,40 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       shake = null;
       anim = null;
       prev = null;
+      paused = false;              // 换一条河就是一局新开局，幕布不该跟着过来
+      clearTimeLayer();            // 上一段的粒子与累加余额不带进下一段
       measure();
     },
     detach() { game = null; },
+    // 暂停：累加器不再吃时间（advanceSim 直接 return），恢复后粒子和渲染时钟都从原处继续。
+    setPaused(v) { paused = !!v; if (paused) drag = null; return paused; },
+    get paused() { return paused; },
+    // 重开/换段都要走这里：瞬态（弧、抖、提示环）与时间层（粒子、累加器、时钟）一起归零。
+    clearTransients() {
+      anim = null;
+      shake = null;
+      hint = null;
+      drag = null;
+      prev = null;
+      clearTimeLayer();
+    },
+    setReducedMotion(v) { reducedMotion = !!v; if (reducedMotion) particles = []; return reducedMotion; },
+    get reducedMotion() { return reducedMotion; },
+    // 帧率对拍读的就是这一组数：三档帧率下同一虚拟时长必须逐位相同。
+    stats() {
+      let pos = 0;
+      for (const p of particles) pos = (pos * 31 + Math.round(p.x * 100) + Math.round(p.y * 100) * 7) % 2147483647;
+      return {
+        simSteps,
+        renderClock: Number(renderClock.toFixed(6)),
+        accumulator: Number(simAccumulator.toFixed(6)),
+        particles: particles.length,
+        particleField: pos,
+        paused,
+        reducedMotion,
+        artLoaded: Object.keys(art).filter((k) => art[k]).length,
+      };
+    },
     // Where pad p is right now, in client pixels, plus what the rules say about it. This is what
     // an automated finger presses, and it goes through the same mapping a real finger does.
     padPoint(p) {
