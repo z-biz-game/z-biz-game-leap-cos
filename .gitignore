@@ -6,3 +6,4 @@ dist/
 playwright/
 coverage/
 .shots/
+_scratch/
