@@ -408,21 +408,6 @@ function fullscreenElement() {
   return document.fullscreenElement || document.webkitFullscreenElement || null;
 }
 
-function toggleFullscreen() {
-  if (fullscreenElement()) {
-    const exit = document.exitFullscreen || document.webkitExitFullscreen;
-    if (exit) exit.call(document);
-    return true;
-  }
-  const root = document.documentElement;
-  const req = root.requestFullscreen || root.webkitRequestFullscreen;
-  if (typeof req !== 'function') {
-    toast('这个浏览器不允许网页全屏（iOS Safari 就是这一个）');
-    return false;
-  }
-  Promise.resolve(req.call(root)).catch(() => toast('全屏请求被拒绝了'));
-  return false;
-}
 
 function syncFullscreenButton() {
   const on = !!fullscreenElement();
