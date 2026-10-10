@@ -2,32 +2,19 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#101418">
-<meta name="description" content="跳蛙渡：两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。">
-<meta property="og:type" content="website">
-<meta property="og:title" content="跳蛙渡 · LEAP">
-<meta property="og:description" content="最短步数是量出来的：BFS 穷尽整条河 × 闭式 n(n+2) × 记忆化 DFS，三条独立的路对同一个数。">
-<meta property="og:image" content="assets/og/leap-og-1200x630.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="一条河上五片莲叶，绿蛙正越过琥珀蛙，虚线弧落到唯一的空位">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="assets/og/leap-og-1200x630.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="跳蛙渡">
-<!-- 位图由 assets/gen/leap_art.py 生成（母题即玩法：绿蛙越过琥珀蛙落入唯一空位）。
-     小尺寸走简化母题，五只蛙压到 16px 会糊成噪点。 -->
-<link rel="icon" type="image/png" sizes="16x16" href="assets/icons/icon-16.png">
-<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="48x48" href="assets/icons/favicon-48.png">
-<link rel="icon" type="image/png" sizes="192x192" href="assets/icons/favicon.png">
-<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
+<meta name="description" content="跳蛙渡：两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。"><meta property="og:title" content="跳蛙渡 · LEAP"><meta property="og:description" content="跳蛙渡：两岸的蛙互换位置。每关的最短步数由该河段全部可达位置的广度优先搜索量出，再由闭式 n(n+2) 与带记忆的深度优先搜索各自复现一遍。"><meta property="og:image" content="https://z-biz-game.github.io/z-biz-game-leap-cos/icons/icon-512.png"><meta name="twitter:image" content="https://z-biz-game.github.io/z-biz-game-leap-cos/icons/icon-512.png">
+<!-- Inline SVG data URI: no /favicon.ico request, so a 404 cannot pollute the console asserts
+     in tools/playtest.mjs, and no binary asset is added to the repo. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%230f2a1e'/%3E%3Cellipse%20cx='16'%20cy='24'%20rx='11'%20ry='4'%20fill='%232f6b45'/%3E%3Ccircle%20cx='11'%20cy='15'%20r='5'%20fill='%2363c76a'/%3E%3Ccircle%20cx='21'%20cy='15'%20r='5'%20fill='%23e0a54a'/%3E%3Ccircle%20cx='9.6'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3Ccircle%20cx='22.4'%20cy='12'%20r='1.5'%20fill='%23f4f7f2'/%3E%3C/svg%3E">
 <title>跳蛙渡 · LEAP</title>
 <link rel="stylesheet" href="css/game.css">
+
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <header class="topbar">
@@ -36,6 +23,7 @@
     <button type="button" data-mode="campaign">河段</button>
     <button type="button" data-mode="daily">每日</button>
     <button type="button" data-mode="random">随机</button>
+      <button type="button" id="btn-fullscreen" aria-pressed="false" title="全屏 (F)">全屏</button>
   </nav>
   <p class="totals" id="totals"></p>
   <div class="hud" role="group" aria-label="系统">
@@ -104,5 +92,6 @@
 
 <p class="toast" id="toast" hidden></p>
 <script type="module" src="js/main.js"></script>
+  <script src="js/sw-register.js"></script>
 </body>
 </html>

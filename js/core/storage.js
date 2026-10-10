@@ -17,6 +17,8 @@
 // Nothing the game *needs* lives here: the campaign is js/data/lots.js and every lot is a pure
 // function of its seed, so a wiped save costs history, never content.
 
+// 存档格式版本号：写档带上、读档校验，将来升 v2 时旧档整档丢弃而不是被误读。
+export const SAVE_VERSION = 1;
 export const SAVE_KEY = 'leap.save.v1';
 
 // A back end counts as present only if it answers a probe read. `globalThis.localStorage` can
@@ -78,6 +80,7 @@ function count(v) {
 
 export function blank() {
   return {
+  v: SAVE_VERSION,
     records: {},
     daily: {},
     unlocked: 1,
@@ -115,7 +118,8 @@ function load() {
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && typeof p === 'object') {
+      if (p && typeof p === 'object' && !Array.isArray(p)
+          && (p.v === undefined || p.v === SAVE_VERSION)) {
         const base = blank();
         const records = {};
         if (p.records && typeof p.records === 'object') {

@@ -172,6 +172,15 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
 
   loadArt();
 
+  // ---- 减弱动效（prefers-reduced-motion）----
+  // 两处装饰：① 提示环 t = (now % 1100) / 1100 喂给线宽、半径与透明度；② 被拒的一跳
+  // shakeOffset() = Math.sin(t * 26) * (1 - t) * r * 0.4 —— 莲叶左右摆。
+  // 判据：被拒本来就有 onIllegal 那句人话读数（"它跳不到 N 号莲叶 —— 只能朝前一步…"），
+  // 摆动是叠在读数上的装饰，归零位移不损失信息；提示环本体一律留着。
+  // 水面那几道涟漪**不是**装饰性动画（相位只由关卡的 skin.ripple 定，不含时间项），不动。
+  let reduceMotion = false;
+  const ringPhase = () => (reduceMotion ? 0.5 : (performance.now() % 1100) / 1100);
+
   // ---------------------------------------------------------------- geometry
 
   function measure() {
@@ -274,7 +283,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     if (reducedMotion) { shake = null; return 0; }   // 抖动属于动效，减弱动效时直接不成立
     const t = (now - shake.t0) / 240;
     if (t >= 1) { shake = null; return 0; }
-    return Math.sin(t * 26) * (1 - t) * geom.r * 0.4;
+    return reduceMotion ? 0 : Math.sin(t * 26) * (1 - t) * geom.r * 0.4;
   }
 
   // 粒子由 stepSim 定步长积分到这里被画，位置已经是"第 N 个 SIM_STEP"的函数，
@@ -511,9 +520,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       }
     }
     if (hint && hint.pad === p && now < hint.until) {
-      // reduceMotion 分支：脉冲项来自墙钟，减弱动效时退化成一张静图环。
-      const t = reducedMotion ? 0.3 : (now % 1100) / 1100;
-      const rad = r * (1.35 + t * 0.5);
+      const t = ringPhase();
       ctx.save();
       if (art.ripple && !reducedMotion) {
         ctx.globalAlpha = 0.9 - t * 0.55;
@@ -706,6 +713,16 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   }
 
   return {
+    // The gate the runtime pref flip lands on: idempotent, repaints so a pad stops mid-sway
+    // on the frame the setting changes rather than at the end of the 240ms decay.
+    setReduceMotion(v) {
+      const on = !!v;
+      if (on === reduceMotion) return reduceMotion;
+      reduceMotion = on;
+      if (reduceMotion) draw(performance.now());
+      return reduceMotion;
+    },
+    isReducedMotion: () => reduceMotion,
     attach(next) {
       game = next;
       hint = null;

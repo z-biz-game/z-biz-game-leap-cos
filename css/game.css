@@ -236,78 +236,53 @@ button[aria-pressed="true"] { border-color: var(--hop); background: rgba(224, 16
   #river { min-height: 260px; }
 }
 
-/* ---------------------------------------------------------------- safe-area
-   index.html 的 viewport 带 viewport-fit=cover，env() 在 iOS 上才不是恒 0；
-   没有 cover，下面这些 calc() 全部退化成裸 padding，刘海与 home indicator 会压住 HUD。 */
-.topbar {
-  padding: calc(14px + env(safe-area-inset-top)) calc(18px + env(safe-area-inset-right))
-           8px calc(18px + env(safe-area-inset-left));
+/* 中央分发：safe-area 兜底 */
+
+/* ---------- safe-area：刘海与主屏条不吃掉按钮（中央分发，akari-cos 同口径） ---------- */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+html, body {
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+}
+body {
+  padding-top: var(--sat);
+  padding-bottom: var(--sab);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+/* 贴边的固定/吸底元素自己让开主屏条，别让 home indicator 压住按钮 */
+.fixed-bottom, .bottom-bar, .hud-bottom, footer.app-footer {
+  padding-bottom: calc(var(--sab) + env(safe-area-inset-bottom, 0px));
 }
 
-.stage {
-  padding: 0 calc(18px + env(safe-area-inset-right))
-           calc(26px + env(safe-area-inset-bottom))
-           calc(18px + env(safe-area-inset-left));
-}
 
-.toast {
-  bottom: calc(22px + env(safe-area-inset-bottom));
-  left: 50%;
-  max-width: calc(100vw - 32px - 2 * env(safe-area-inset-left));
-}
+/* ============================================================
+   44px 触摸命中下限（Apple HIG 手机可用性底线）
+   每个真正可点的元素都要有 ≥44×44 CSS px 的命中盒。
+   min-height / min-width 是**硬下限**：只会把过小的盒子撑到 44px，
+   本来就够大的控件（宽药丸、整行列表项、大数字键）外形一点不变。
 
-/* ---------------------------------------------------------------- HUD */
-.hud { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.hud button {
-  font-size: 13px;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.hud button[aria-pressed="true"] { border-color: var(--hop); background: rgba(224, 165, 74, 0.16); }
-
-/* 暂停幕布与教学卡：都盖在 canvas 上，因此 .board 的 position: relative 是承重的。 */
-.veil,
-.tutorial {
-  position: absolute;
-  inset: 8px;
-  display: grid;
-  place-items: center;
-  padding: 16px;
-  border-radius: 12px;
-  background: rgba(4, 10, 14, 0.78);
-}
-
-.veil[hidden], .tutorial[hidden] { display: none; }
-
-.veil-word { margin: 0; font-size: 26px; letter-spacing: 0.3em; color: var(--hop); }
-.veil-note { margin: 8px 0 0; color: var(--ink-dim); font-size: 13px; text-align: center; }
-.veil-note b { color: var(--ink); }
-
-.tut-card {
-  width: min(94%, 560px);
-  padding: 16px 18px;
-  border: 1px solid var(--edge);
-  border-radius: 14px;
-  background: var(--card);
-}
-
-.tut-card h2 { margin: 0 0 8px; font-size: 18px; }
-.tut-card ol { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.7; }
-.tut-card b { color: var(--ink); }
-.tut-card em { color: var(--good); font-style: normal; }
-.tut-keys { margin: 12px 0 0; font-size: 12px; color: var(--ink-dim); }
-.tut-keys b { color: var(--hop); }
-.tut-actions { margin-top: 12px; text-align: center; }
-
-/* ---------------------------------------------------------------- reduce-motion
-   真正的开关在 js/view.js 与 js/audio.js 的 matchMedia 分支里（关掉粒子、涟漪、抖动，
-   提示环退化为静图）；这一层负责把 CSS 侧的过渡与模糊一起停掉。 */
-@media (prefers-reduced-motion: reduce) {
-  button { transition: none; }
-  .curtain, .veil, .tutorial { backdrop-filter: none; transition: none; }
-  .brand-mark { animation: none; }
-  .stars { animation: none; }
-  .hint-line { transition: none; }
+   两处非平凡之处：
+   1) 需要 !important —— 各组件自己有 `.shelf button { min-width: 34px }`
+      这类更"贴身"的规则，类选择器的优先级高于任何标签堆叠，
+      不加的话这条底线会被组件规则逐个抵消。
+   2) 先把 --touch-min 定死：tapa / nurikabe 早就写了
+      `min-height: var(--touch-min)`，但全仓没有任何地方定义过这个变量，
+      无 fallback 的 var() 在计算值阶段整条作废 —— 那是个看着像 44px、
+      实际什么都不保证的死规则。这里补上定义，让它们原本的意图真正成立。
+   ============================================================ */
+:root { --touch-min: 44px; }
+button,
+select,
+input,
+textarea,
+a[href],
+[role="button"] {
+  min-height: 44px !important;
+  min-width: 44px !important;
 }
