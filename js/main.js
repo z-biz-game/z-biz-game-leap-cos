@@ -14,6 +14,7 @@ import {
   boardKey, counts, createGame, GAP, grade, hint, LEAP, overPar, play, remaining, reset,
   tableRoute, undo,
 } from './core/game.js';
+import { createPause } from './core/pause.js';
 import { anchorTable, solveBoard } from './core/solve.js';
 import { store, storageMode } from './core/storage.js';
 import {
@@ -24,12 +25,19 @@ import { todayKey, hashSeed } from './core/rng.js';
 import { createView } from './view.js';
 
 const $ = (id) => document.getElementById(id);
+
+// The pause owns the flag, the clock and the door. js/core/pause.js is pure, so the node
+// suite drives the same object the page runs — the behaviour is proved in one place and
+// shipped from the same place.
+const pause = createPause();
+
 const el = {
   modes: $('modes'), totals: $('totals'), crumbs: $('crumbs'), readout: $('readout'),
   shelf: $('shelf'), hintline: $('hintline'), curtain: $('curtain'), stars: $('stars'),
   verdict: $('verdict'), tally: $('tally'), proof: $('proof'), undo: $('undo'), hint: $('hint'),
   demo: $('demo'), restart: $('restart'), share: $('share'), next: $('next'), again: $('again'),
   toast: $('toast'), canvas: $('river'), wipe: $('wipe'), saveMode: $('save-mode'),
+  pauseBtn: $('btn-pause'), veil: $('pause-veil'), resumeBtn: $('btn-resume'),
 };
 
 const LOTS = ALL.length;
@@ -109,8 +117,14 @@ const view = createView(el.canvas, {
   },
 });
 
+// The panel's clock ticks with the frame loop, so a river on hold does not even get a frame
+// to move its reading.
+view.onFrame = () => syncClock();
+
 function setGame(lot, label) {
   stopDemo('');
+  if (pause.paused) setPaused(false);   // a new river is never born on hold
+  pause.start();                        // the clock of this river starts at zero
   app.lot = lot;
   app.label = label || app.label;
   const withTable = { ...lot, table: lot.table || tableFor(lot) };
@@ -129,11 +143,73 @@ function field(label, value, note, cls = '') {
   return `<div class="${cls}"><dt>${label}</dt><dd>${value}</dd><dt><small>${note}</small></dt></div>`;
 }
 
+// ---- the clock on the panel ----
+//
+// The reading is the time this river has been on the table. The paused stretches are not on
+// it — js/core/pause.js banks them out — so a pause neither eats a second nor invents one.
+let lastClockText = '';
+function clockText() {
+  const ms = Math.max(0, Math.round(pause.elapsedMs()));
+  const s = Math.floor(ms / 1000);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function syncClock() {
+  const t = clockText();
+  if (t === lastClockText) return;
+  lastClockText = t;
+  const node = document.getElementById('clock');
+  if (node) node.textContent = t;
+  const veilClock = document.getElementById('pause-clock');
+  if (veilClock) veilClock.textContent = t;
+}
+
+// ---- the pause ----
+//
+// A pause that stops nothing is a label. This one stops the three things that really move:
+// the clock on the panel, the demo's own auto-play timer, and the frame loop that flies the
+// hop arc. And it holds the door on every way the pads can change — a finger, a drag, the
+// demo, a replay — through the one guard in commit().
+let demoWasRunning = false;
+
+function syncPauseUI() {
+  const on = pause.paused;
+  if (el.pauseBtn) {
+    el.pauseBtn.textContent = on ? '继续' : '暂停';
+    el.pauseBtn.setAttribute('aria-pressed', String(on));
+    el.pauseBtn.title = on ? '继续 (P)' : '暂停 (P)';
+  }
+  if (el.veil) el.veil.hidden = !on;
+  const veilClock = document.getElementById('pause-clock');
+  if (veilClock) veilClock.textContent = clockText();
+}
+
+function setPaused(next) {
+  const on = !!next;
+  if (on === pause.paused) { syncPauseUI(); return on; }
+  if (on) {
+    pause.pause();                              // the clock stops here
+    view.pause();                               // the frame loop stops here: no arc advances
+    if (demoTimer) { demoWasRunning = true; stopDemo(''); }   // the auto-play timer stops here
+    say('已暂停 —— 棋盘、计时和演示都停住了；按 <b>P</b> 或点「继续」接着走');
+  } else {
+    pause.resume();                             // the clock picks up from the pause, not from zero
+    view.resume();                              // the arc continues from the frame it was frozen on
+    if (demoWasRunning) { demoWasRunning = false; startDemo(); }
+    say('继续 —— 计时从暂停处接着走');
+  }
+  syncPauseUI();
+  syncClock();
+  if (app.game) renderCrumbs();
+  return !on;
+}
+
 function renderCrumbs() {
   const tier = tierByKey(app.lot.tier);
   const rec = store.record(app.lot.id);
   const left = remaining(app.game);
   const dead = left === null;
+  const clock = clockText();
   el.crumbs.innerHTML = `${app.label}<b>${tier.label}<span class="band"> ${tier.blurb}</span></b>`;
   el.readout.innerHTML = [
     field('步数', app.game.moves, '已落的蛙'),
@@ -142,10 +218,12 @@ function renderCrumbs() {
     field('最优路线', app.lot.optimalPaths, app.lot.optimalPaths === 2 ? '互为镜像' : '条'),
     field('最佳', rec && rec.best ? rec.best : '—', rec && rec.perfect ? '等于最短' : '你的纪录', 'best'),
     field('提示 / 困水', `${app.hints} / ${app.strands}`, '本段计数'),
+    field('用时', `<span id="clock">${clock}</span>`, '暂停不计'),
   ].join('');
-  el.undo.disabled = !app.game.moves || app.game.done;
-  el.hint.disabled = app.game.done;
-  el.demo.disabled = app.game.done;
+  lastClockText = clock;
+  el.undo.disabled = !app.game.moves || app.game.done || pause.paused;
+  el.hint.disabled = app.game.done || pause.paused;
+  el.demo.disabled = app.game.done || pause.paused;
 }
 
 function renderTotals() {
@@ -219,7 +297,7 @@ function render() {
 
 // The one place a move happens: a finger on the canvas, the demo's own route and a test replay
 // all arrive here and all get held to the same rule.
-function commit(move) {
+function commitRaw(move) {
   const took = play(app.game, move);
   if (!took) {
     view.redraw();
@@ -240,9 +318,15 @@ function commit(move) {
   return took;
 }
 
+// The door. A finger on the canvas, the demo's own route and a test replay all arrive at
+// commitRaw; while the river is on hold the guard turns them away, so a paused board cannot
+// be moved by any of them — and a refused call changes nothing at all.
+const commit = pause.guard(commitRaw);
+
 function finish() {
   const lot = app.lot;
   const g = app.game;
+  pause.finish();                       // the reading stops where the river ended
   const rec = store.solve(lot.id, { moves: g.moves, par: lot.par, hints: app.hints });
   if (app.day) store.markDaily(app.day, lot.id);
   let nextIndex = 0;
@@ -327,6 +411,7 @@ function startDemo() {
   el.demo.setAttribute('aria-pressed', 'true');
   const cap = app.game.table ? app.game.table.size : app.lot.par + 1;
   demoTimer = setInterval(() => {
+    if (!pause.allow()) return;               // on hold: the auto-play does not step
     if (++demoSteps > cap || !app.game || app.game.done) {
       stopDemo('演示到此为止');
       return;
@@ -386,6 +471,8 @@ el.demo.addEventListener('click', () => {
 
 function restart() {
   stopDemo('');
+  if (pause.paused) setPaused(false);   // a restart is the way out of a pause
+  pause.start();                        // and the clock starts over with the river
   reset(app.game);
   app.hints = 0;
   app.strands = 0;
@@ -397,6 +484,10 @@ function restart() {
 
 el.restart.addEventListener('click', restart);
 el.share.addEventListener('click', shareLink);
+// The pause is reachable two ways: the button in the top bar and the P key. Both go through
+// the same setPaused(), so the button and the shortcut cannot drift apart.
+if (el.pauseBtn) el.pauseBtn.addEventListener('click', () => setPaused(!pause.paused));
+if (el.resumeBtn) el.resumeBtn.addEventListener('click', () => setPaused(false));
 el.again.addEventListener('click', restart);
 el.next.addEventListener('click', () => go(`#/c/${Math.min(LOTS, app.index + 1)}`));
 
@@ -426,10 +517,13 @@ window.addEventListener('keydown', (ev) => {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
   const k = String(ev.key).toLowerCase();
   if (k === 'escape' && !el.curtain.hidden) el.curtain.hidden = true;
-  else if (k === 'u') el.undo.click();
-  else if (k === 'h') el.hint.click();
+  else if (k === 'p' || k === 'escape') setPaused(!pause.paused);
+  // While the river is on hold the keys that would change the pads are refused; only the
+  // pause itself (and 重开, which is the way out of it) still answers.
+  else if (k === 'u' && !pause.paused) el.undo.click();
+  else if (k === 'h' && !pause.paused) el.hint.click();
   else if (k === 'r') el.restart.click();
-  else if (k === 'd') el.demo.click();
+  else if (k === 'd' && !pause.paused) el.demo.click();
 });
 
 view.start();
@@ -467,6 +561,8 @@ window.leap = {
       solved: ALL.filter((l) => store.record(l.id) && store.record(l.id).solved).length,
       curtain: !el.curtain.hidden,
       demo: !!demoTimer,
+      paused: pause.paused,
+      elapsedMs: Math.round(pause.elapsedMs()),
     };
   },
   get pool() { return poolStats(); },
@@ -519,6 +615,8 @@ window.leap = {
     return { hints: app.hints, move: h ? h.move : null, line: el.hintline.textContent };
   },
   undoOnce() { el.undo.click(); return app.game.moves; },
+  // The pause, from a test's side: the same setPaused() the button and the P key use.
+  pauseToggle() { setPaused(!pause.paused); return pause.paused; },
   demoStart() { startDemo(); return !!demoTimer; },
   demoStop() { stopDemo(''); return demoTimer === 0; },
   pixels() { return view.pixelsHash(); },

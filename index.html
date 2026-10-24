@@ -25,6 +25,7 @@
     <button type="button" data-mode="random">随机</button>
       <button type="button" id="btn-fullscreen" aria-pressed="false" title="全屏 (F)">全屏</button>
   </nav>
+  <button type="button" id="btn-pause" aria-pressed="false" title="暂停 (P)">暂停</button>
   <p class="totals" id="totals"></p>
 </header>
 
@@ -32,6 +33,16 @@
   <section class="board">
     <canvas id="river" aria-label="一条河，两岸的青蛙要互换位置"></canvas>
     <p class="hint-line" id="hintline"></p>
+    <div class="pause-veil" id="pause-veil" hidden>
+      <div class="pause-card">
+        <p class="pause-title">已暂停</p>
+        <p class="pause-sub">本局用时 <b id="pause-clock">00:00</b> · 棋盘与计时都停住了</p>
+        <div class="pause-actions">
+          <button type="button" id="btn-resume" class="primary">继续</button>
+        </div>
+        <p class="pause-hint">按 <b>P</b> 或 <b>Esc</b> 也可以继续</p>
+      </div>
+    </div>
     <div class="curtain" id="curtain" hidden>
       <div class="curtain-card">
         <p class="stars" id="stars"></p>

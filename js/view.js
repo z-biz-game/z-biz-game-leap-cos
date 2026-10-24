@@ -42,6 +42,9 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   let raf = 0;
   let last = 0;
   let warm = 0;                    // the first frames always repaint, so the canvas is never blank
+  let paused = false;              // the river is on hold: not one frame advances
+  let pausedAt = 0;                // when it was put on hold
+  let onFrame = null;              // the shell's per-frame tick (the clock on the panel)
 
   // ---- 减弱动效（prefers-reduced-motion）----
   // 两处装饰：① 提示环 t = (now % 1100) / 1100 喂给线宽、半径与透明度；② 被拒的一跳
@@ -417,6 +420,9 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     // warm-up frames after a load; an untouched river then stops drawing, which is what keeps
     // pixelsHash() a fingerprint of the *position* rather than of the clock.
     if (busy || warm < 4) { warm++; draw(now); }
+    // The shell's tick (the clock on the panel). It stops with the loop: a paused river does
+    // not even get a frame to update a reading.
+    if (onFrame) onFrame(now);
   }
 
   // ---------------------------------------------------------------- the pointer
@@ -427,7 +433,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   }
 
   function down(ev) {
-    if (!game || game.done) return;
+    if (paused || !game || game.done) return;
     const p = localPoint(ev);
     const pad = padAt(p.x, p.y);
     if (pad < 0) return;                       // bare water is not a frog, and costs nothing
@@ -446,7 +452,7 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
   }
 
   function up(ev) {
-    if (!drag) return;
+    if (paused || !drag) return;
     const p = localPoint(ev);
     const pad = padAt(p.x, p.y);
     const started = drag.pad;
@@ -568,5 +574,33 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
       cancelAnimationFrame(raf);
       raf = 0;
     },
+    // ---- the pause ----
+    //
+    // Putting the river on hold stops the frame loop dead: not one frame advances, so the hop
+    // arc, the shake and the hint ring all stay exactly where they were. The pointer stops
+    // being read as well, and a finger that was already holding a pad is let go rather than
+    // allowed to land a move after the pause.
+    pause() {
+      if (paused) return false;
+      paused = true;
+      pausedAt = performance.now();
+      drag = null;
+      if (raf) { cancelAnimationFrame(raf); raf = 0; }
+      return true;
+    },
+    // Releasing hands the animation the time it lost, so the frog keeps flying from the frame
+    // it was frozen on instead of jumping to the end of its arc.
+    resume() {
+      if (!paused) return false;
+      const gap = performance.now() - pausedAt;
+      paused = false;
+      if (anim) anim.t0 += gap;
+      if (shake) shake.t0 += gap;
+      if (hint) hint.until += gap;
+      if (!raf) raf = requestAnimationFrame(frame);
+      return true;
+    },
+    isPaused: () => paused,
+    set onFrame(fn) { onFrame = typeof fn === 'function' ? fn : null; },
   };
 }

@@ -112,6 +112,39 @@ html, body {
 .hint-line .no { color: var(--bad); }
 .hint-line .yes { color: var(--good); }
 
+/* ---- the paused state ----
+   The veil is the visible proof that the river is on hold: it covers the board (so a finger
+   cannot reach a lily pad behind it), it says 「已暂停」 in words, and it prints the reading
+   that stopped with the clock. */
+.pause-veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(4, 10, 14, 0.66);
+  border-radius: 16px;
+  backdrop-filter: blur(2px);
+  z-index: 1;
+}
+
+.pause-veil[hidden] { display: none; }
+
+.pause-card {
+  width: min(92%, 320px);
+  padding: 18px 20px;
+  border-radius: 14px;
+  border: 1px solid var(--edge);
+  background: var(--card);
+  text-align: center;
+}
+
+.pause-title { margin: 0; font-size: 20px; letter-spacing: 0.12em; }
+.pause-sub { margin: 6px 0 12px; color: var(--ink-dim); font-size: 13px; }
+.pause-sub b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.pause-actions { display: flex; gap: 8px; justify-content: center; }
+.pause-hint { margin: 10px 0 0; color: var(--ink-dim); font-size: 12px; }
+.pause-hint b { color: var(--ink); }
+
 .curtain {
   position: absolute;
   inset: 0;
