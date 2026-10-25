@@ -23,6 +23,10 @@ import {
 } from './core/library.js';
 import { todayKey, hashSeed } from './core/rng.js';
 import { createView } from './view.js';
+// 听觉与触觉这两路反馈：视觉与数值之外，桌面上还该有"听得见"的一路。
+// 音频模块自己管手势解锁与真静音（suspend），这里只管把音接到真实事件上。
+import { audio } from './audio.js';
+import { haptics } from './haptics.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -297,16 +301,33 @@ function render() {
 
 // The one place a move happens: a finger on the canvas, the demo's own route and a test replay
 // all arrive here and all get held to the same rule.
+//
+// 声音接在这条路径上，因为这条路径上发生的是**真实事件**：
+//   · 引擎拒了这一手 → wrong（规则不成立，壳层只是把理由念出来）
+//   · 引擎认了这一手 → correct（一次有效操作成功）
+//   · 这一手把青蛙推进了死水（对岸再也到不了）→ lose
+//   · 渡到对岸 → win（在 finish 里）
 function commitRaw(move) {
   const took = play(app.game, move);
   if (!took) {
+    audio.play('wrong');
+    haptics.wrong();
     view.redraw();
     return false;
   }
   if (took.stranded) app.strands++;
   if (app.game.done) {
-    finish();
+    finish();                      // 收官那一响是 win，在 finish 里
+    haptics.correct();
     return took;
+  }
+  if (took.stranded) {
+    // 这一手把青蛙推进了死水：对岸再也到不了（core/game.js 的 distance 返回 null）。
+    // 这是本仓唯一的"失败"信号 —— 河本身不会输，但这一局已经过不去了。
+    audio.play('lose');
+  } else {
+    audio.play('correct');         // 一次有效操作成功
+    haptics.correct();
   }
   view.redraw();
   renderCrumbs();
@@ -321,11 +342,22 @@ function commitRaw(move) {
 // The door. A finger on the canvas, the demo's own route and a test replay all arrive at
 // commitRaw; while the river is on hold the guard turns them away, so a paused board cannot
 // be moved by any of them — and a refused call changes nothing at all.
-const commit = pause.guard(commitRaw);
+//
+// 闸挡住这一口时是 blocked（不是"错"）。这一声得在门外发：pause.guard 在暂停时
+// **根本不调用**被包的那个函数，被包的那一侧没有机会开口。
+const commitGuarded = pause.guard(commitRaw);
+const commit = (...args) => {
+  if (!pause.allow()) {
+    audio.play('blocked');
+    return false;
+  }
+  return commitGuarded(...args);
+};
 
 function finish() {
   const lot = app.lot;
   const g = app.game;
+  audio.play('win');                  // 渡到对岸
   pause.finish();                       // the reading stops where the river ended
   const rec = store.solve(lot.id, { moves: g.moves, par: lot.par, hints: app.hints });
   if (app.day) store.markDaily(app.day, lot.id);
@@ -442,6 +474,7 @@ el.modes.addEventListener('click', (ev) => {
 el.undo.addEventListener('click', () => {
   stopDemo('');
   if (undo(app.game)) {
+    audio.play('move');        // 退回一步：盘面退了一步
     view.redraw();
     renderCrumbs();
     const left = remaining(app.game);
@@ -455,10 +488,12 @@ el.hint.addEventListener('click', () => {
     say(remaining(app.game) === null
       ? '<span class="no">这一步已经把自己困死了 —— 提示帮不上忙，只能退回</span>'
       : '<span class="yes">对岸已在脚下</span>');
+    audio.play('wrong');
     return;
   }
   app.hints++;
   stopDemo('');
+  audio.play('move');          // 提示：只点一步，不代走
   view.showHint(h.move.from);
   say(`提示：<b>${h.move.from + 1} 号莲叶</b> ${h.move.kind === 'hop' ? '跳过同伴' : '向前一步'}到 <b>${h.move.to + 1}</b> —— 之后还需 <b>${h.left - 1}</b> 步`);
   renderCrumbs();
@@ -754,3 +789,26 @@ if (motionQuery) {
 }
 window.leap.setReduceMotion = applyReduceMotion;
 window.leap.isReducedMotion = () => view.isReducedMotion();
+
+// ---- 音效开关（#btn-sound）----
+//
+// 静音走 `audio.setMuted(true)`，那是 `ctx.suspend()`：整个 AudioContext 挂起。
+// **不许**改成像"把 master.gain 拧到 0"那样 —— 只拧 gain 是假静音：节点照建、时钟照跑，
+// 取消静音之后还有一截尾巴在响。真正的静音必须是挂起整个上下文。
+//
+// 按钮找不到就不装（和全屏那一条同一条纪律）：留一串没人按的代码等于没做这个功能。
+(function bindSound() {
+  const btn = document.getElementById('btn-sound');
+  if (!btn) return;
+  function paint() {
+    const on = !audio.muted;
+    btn.setAttribute('aria-pressed', String(on));
+    btn.textContent = on ? '音效：开' : '音效：关';
+    btn.title = on ? '点击关闭音效' : '点击开启音效';
+  }
+  btn.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    paint();
+  });
+  paint();
+})();
