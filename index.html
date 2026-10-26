@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
+  <meta name="color-scheme" content="dark light">
+
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#101418">
@@ -15,6 +17,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/studio.css" />
 </head>
 <body>
 <header class="topbar">
@@ -25,6 +28,7 @@
     <button type="button" data-mode="random">随机</button>
       <button type="button" id="btn-fullscreen" aria-pressed="false" title="全屏 (F)">全屏</button>
   </nav>
+  <button type="button" id="btn-pause" aria-pressed="false" title="暂停 (P)">暂停</button>
   <p class="totals" id="totals"></p>
   <div class="hud" role="group" aria-label="系统">
     <button type="button" id="pause" aria-pressed="false" title="暂停 / 继续（P）">⏸ 暂停</button>
@@ -37,6 +41,16 @@
   <section class="board">
     <canvas id="river" aria-label="一条河，两岸的青蛙要互换位置"></canvas>
     <p class="hint-line" id="hintline"></p>
+    <div class="pause-veil" id="pause-veil" hidden>
+      <div class="pause-card">
+        <p class="pause-title">已暂停</p>
+        <p class="pause-sub">本局用时 <b id="pause-clock">00:00</b> · 棋盘与计时都停住了</p>
+        <div class="pause-actions">
+          <button type="button" id="btn-resume" class="primary">继续</button>
+        </div>
+        <p class="pause-hint">按 <b>P</b> 或 <b>Esc</b> 也可以继续</p>
+      </div>
+    </div>
     <div class="curtain" id="curtain" hidden>
       <div class="curtain-card">
         <p class="stars" id="stars"></p>
@@ -93,5 +107,6 @@
 <p class="toast" id="toast" hidden></p>
 <script type="module" src="js/main.js"></script>
   <script src="js/sw-register.js"></script>
+  <div class="studio-atmosphere" aria-hidden="true"></div>
 </body>
 </html>

@@ -22,6 +22,8 @@ import {
 } from './core/library.js';
 import { todayKey, hashSeed } from './core/rng.js';
 import { sfx } from './audio.js';
+// 触觉是第三路反馈：`navigator.vibrate` 在 iOS Safari 上不存在，模块自己会空操作。
+import { haptics } from './haptics.js';
 import { createView } from './view.js';
 
 const $ = (id) => document.getElementById(id);
@@ -106,6 +108,7 @@ const view = createView(el.canvas, {
   onMove: (m) => commit(m),
   onIllegal: (pad, board, tried) => {
     sfx.refuse();
+    haptics.wrong();
     const species = board[pad] === LEAP ? '左岸蛙' : '右岸蛙';
     el.hintline.innerHTML = tried === undefined
       ? `<span class="no">${pad + 1} 号莲叶上的${species}现在无路可走</span> —— 前面必须是空格，或恰好一只对岸的蛙加一个空格`
@@ -234,9 +237,10 @@ function commit(move) {
   }
   if (took.stranded) app.strands++;
   // 一次落蛙只发一个声：通关那一步不再叠落水的声音。
-  if (app.game.done) sfx.win();
+  if (app.game.done) { sfx.win(); haptics.correct(); }
   else if (took.kind === 'hop') sfx.hop();
   else sfx.step();
+  haptics.tap();
   if (app.game.done) {
     finish();
     return took;
