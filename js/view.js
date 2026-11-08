@@ -521,6 +521,9 @@ export function createView(canvas, { onMove, onIllegal } = {}) {
     }
     if (hint && hint.pad === p && now < hint.until) {
       const t = ringPhase();
+      // 与 drawParticles() 的 ring 同一公式。原来这里直接用 rad 却从未声明，
+      // 点一次提示就会在帧回调里抛 ReferenceError，画面冻死。
+      const rad = geom.r * (0.8 + t * 1.7);
       ctx.save();
       if (art.ripple && !reducedMotion) {
         ctx.globalAlpha = 0.9 - t * 0.55;
